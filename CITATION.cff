@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+title: "Surface energies of disordered Ni-Co-Cr alloys"
+type: software
+authors:
+  - family-names: Naik
+    given-names: Shriram Atul
+  - family-names: Kethavath
+    given-names: Mounika
+  - family-names: Rishi
+    given-names: Lakshya
+license: MIT
+keywords:
+  - surface energy
+  - molecular dynamics
+  - MEAM
+  - NiCoCr

@@ -1,0 +1,77 @@
+# 0 K validation: lattice parameter, energy/atom, elastic constants (finite strain).
+# Potential: potential/potential.lmp (start LAMMPS from the repository root). See the README for the command.
+
+variable data    index cell.data
+variable ncell   index 6
+variable tag     index elastic
+variable eps     index 0.002          # strain magnitude
+
+# ---------- 1. relax atoms + box at 0 K, save the reference structure ----------
+units       metal
+boundary    p p p
+atom_style  atomic
+read_data   ${data}
+include     potential/potential.lmp
+neighbor    2.0 bin
+thermo      200
+thermo_style custom step pe press pxx pyy pzz pxy pxz pyz lx ly lz
+
+fix relax all box/relax aniso 0.0
+minimize 1e-12 1e-12 10000 100000
+unfix relax
+minimize 1e-12 1e-12 10000 100000
+
+change_box all triclinic
+variable lx0 equal $(lx)
+variable ly0 equal $(ly)
+variable lz0 equal $(lz)
+variable a0  equal $(v_lx0/v_ncell)
+variable E0  equal $(pe/atoms)
+write_data ${tag}_relaxed.data
+
+# ---------- 2. loop over deformations, each from the relaxed structure ----------
+# xp/xm = tension +/- along x ; sxyp/sxym, sxzp/sxzm, syzp/syzm = shear +/-
+variable dm index xp xm sxyp sxym sxzp sxzm syzp syzm
+label loop
+clear
+units       metal
+boundary    p p p
+atom_style  atomic
+read_data   ${tag}_relaxed.data
+include     potential/potential.lmp
+neighbor    2.0 bin
+thermo      200
+thermo_style custom step pe press pxx pyy pzz pxy pxz pyz lx ly lz
+
+if "${dm} == xp"   then "change_box all x scale $(1+v_eps) remap"
+if "${dm} == xm"   then "change_box all x scale $(1-v_eps) remap"
+if "${dm} == sxyp" then "change_box all xy final $(v_eps*v_ly0) remap"
+if "${dm} == sxym" then "change_box all xy final $(-v_eps*v_ly0) remap"
+if "${dm} == sxzp" then "change_box all xz final $(v_eps*v_lz0) remap"
+if "${dm} == sxzm" then "change_box all xz final $(-v_eps*v_lz0) remap"
+if "${dm} == syzp" then "change_box all yz final $(v_eps*v_lz0) remap"
+if "${dm} == syzm" then "change_box all yz final $(-v_eps*v_lz0) remap"
+
+minimize 1e-12 1e-12 10000 100000
+run 0
+variable pxx_${dm} equal $(pxx)
+variable pyy_${dm} equal $(pyy)
+variable pzz_${dm} equal $(pzz)
+variable pxy_${dm} equal $(pxy)
+variable pxz_${dm} equal $(pxz)
+variable pyz_${dm} equal $(pyz)
+next dm
+jump SELF loop
+
+# ---------- 3. elastic constants (GPa); stress = -pressure; 1 bar = 1e-4 GPa ----------
+variable C11 equal -(v_pxx_xp-v_pxx_xm)/(2*v_eps)/10000
+variable C12 equal -((v_pyy_xp+v_pzz_xp)-(v_pyy_xm+v_pzz_xm))/(4*v_eps)/10000
+variable C44 equal -((v_pxy_sxyp-v_pxy_sxym)+(v_pxz_sxzp-v_pxz_sxzm)+(v_pyz_syzp-v_pyz_syzm))/(6*v_eps)/10000
+variable B   equal (v_C11+2*v_C12)/3
+variable Gv  equal (v_C11-v_C12+3*v_C44)/5
+variable Gr  equal 5*(v_C11-v_C12)*v_C44/(4*v_C44+3*(v_C11-v_C12))
+variable G   equal (v_Gv+v_Gr)/2
+variable Ey  equal 9*v_B*v_G/(3*v_B+v_G)
+
+print "a0(A) E0(eV/atom) C11 C12 C44 B G_Hill E_Young(GPa) : ${a0} ${E0} ${C11} ${C12} ${C44} ${B} ${G} ${Ey}"
+print "${a0} ${E0} ${C11} ${C12} ${C44} ${B} ${G} ${Ey}" file ${tag}_result.txt

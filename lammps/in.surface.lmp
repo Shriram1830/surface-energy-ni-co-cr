@@ -1,0 +1,98 @@
+# Surface energy of a random Ni-Co-Cr alloy, "same-atoms" method, Sharifi & Wick MEAM.
+#
+#   gamma = (E_slab - E_bulk) / (2 A),   A = Lx*Ly,   same atoms in both calculations
+#
+#   T = 0  : static. Relax the bulk cell (atoms + box) -> E_bulk; add vacuum; relax atoms -> E_slab.
+#   T > 0  : 1) relax at 0 K  2) NPT bulk at T, 0 bar -> mean box  3) NVT bulk in that box -> <PE_bulk>
+#            4) add vacuum along z to the SAME atoms  5) NVT slab at T -> <PE_slab>
+#
+# Potential: potential/potential.lmp (start LAMMPS from the repository root)
+# Atom types in the data file: 1 = Ni, 2 = Co, 3 = Cr  (set by build_cell.py)
+# Usage (normally called by src/run.py):
+#   lmp -in lammps/in.surface.lmp -var T 300 -var data cells/x.data -var tag results/x -var vac 20
+
+variable T      index 300
+variable data   index cell.data
+variable tag    index run
+variable vac    index 20.0        # vacuum thickness added along z (Angstrom)
+variable seed   index 12345       # velocity seed
+variable neq    index 5000        # equilibration steps (2 fs each)
+variable nprod  index 20000       # production (averaging) steps
+variable etol   index 1e-10       # minimiser tolerance (run.py uses 1e-12 for T = 0)
+
+units       metal
+boundary    p p p
+atom_style  atomic
+read_data   ${data}
+
+include     potential/potential.lmp
+neighbor    2.0 bin
+timestep    0.002
+thermo      2000
+thermo_style custom step temp pe press lx ly lz
+
+variable bx equal lx
+variable by equal ly
+variable bz equal lz
+variable N  equal atoms
+variable nrep equal ${nprod}/10
+
+# ---------- 1. relax atoms + box at 0 K ----------
+fix relax all box/relax aniso 0.0
+minimize ${etol} ${etol} 10000 100000
+unfix relax
+minimize ${etol} ${etol} 10000 100000
+
+if "${T} == 0" then "jump SELF static_branch"
+
+# ---------- 2. NPT bulk at T, zero pressure -> mean box ----------
+velocity all create ${T} ${seed} mom yes rot yes dist gaussian
+fix npt all npt temp ${T} ${T} 0.2 aniso 0.0 0.0 2.0
+run ${neq}
+fix boxavg all ave/time 10 ${nrep} ${nprod} v_bx v_by v_bz
+run ${nprod}
+variable Lx equal $(f_boxavg[1])
+variable Ly equal $(f_boxavg[2])
+variable Lz equal $(f_boxavg[3])
+unfix boxavg
+unfix npt
+
+# ---------- 3. NVT bulk in the mean box -> <PE_bulk> ----------
+change_box all x final 0 ${Lx} y final 0 ${Ly} z final 0 ${Lz} remap
+velocity all create ${T} ${seed} mom yes rot yes dist gaussian
+fix nvt all nvt temp ${T} ${T} 0.2
+run ${neq}
+fix peser all ave/time 10 1 10 c_thermo_pe file ${tag}_bulk_pe.dat
+fix peavg all ave/time 10 ${nrep} ${nprod} c_thermo_pe
+run ${nprod}
+variable Ebulk equal $(f_peavg)
+unfix peser
+unfix peavg
+unfix nvt
+
+# ---------- 4+5. add vacuum along z (same atoms) -> NVT slab -> <PE_slab> ----------
+change_box all z final 0 $(v_Lz+v_vac) units box
+velocity all create ${T} ${seed} mom yes rot yes dist gaussian
+fix nvt all nvt temp ${T} ${T} 0.2
+run ${neq}
+fix peser all ave/time 10 1 10 c_thermo_pe file ${tag}_slab_pe.dat
+fix peavg all ave/time 10 ${nrep} ${nprod} c_thermo_pe
+run ${nprod}
+variable Eslab equal $(f_peavg)
+jump SELF report
+
+# ---------- static (T = 0) branch ----------
+label static_branch
+variable Lx equal $(lx)
+variable Ly equal $(ly)
+variable Lz equal $(lz)
+variable Ebulk equal $(pe)
+change_box all z final 0 $(v_Lz+v_vac) units box
+minimize ${etol} ${etol} 10000 100000
+variable Eslab equal $(pe)
+
+# ---------- result ----------
+label report
+variable gamma equal (v_Eslab-v_Ebulk)/(2*v_Lx*v_Ly)*16021.766   # eV/A^2 -> mJ/m^2
+print "${T} ${N} ${Lx} ${Ly} ${Lz} ${Ebulk} ${Eslab} ${gamma}" file ${tag}_result.txt
+print "gamma = ${gamma} mJ/m^2"

@@ -1,0 +1,7 @@
+# Sharifi & Wick MEAM potential for Cr-Ni-Co (NIST entry 2025--Sharifi-H--Cr-Ni-Co--LAMMPS--ipr1).
+# Every LAMMPS input in this repository includes this file. Start LAMMPS from the repository root.
+#
+# Atom types in all data files (set by build_cell.py): 1 = Ni, 2 = Co, 3 = Cr.
+# The parameter files list the elements in the order Cr Ni Co; the last three names map types 1, 2, 3.
+pair_style  meam
+pair_coeff  * * potential/library.meam Cr Ni Co potential/CrNiCo.meam Ni Co Cr

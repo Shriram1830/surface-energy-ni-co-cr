@@ -1,0 +1,6 @@
+system,present_mJ_m2,reference_mJ_m2,reference,deviation_pct
+Ni22Co39Cr39,1731.3,2573,Shuang et al.,-32.7
+Ni33Co33Cr33,1702.5,2508,Shuang et al.,-32.1
+Ni44Co28Cr28,1659.9,2475,Shuang et al.,-32.9
+Pure Ni (0 K),1450.9,2269,Shuang et al.,-36.1
+Pure Ni (0 K),1450.9,1920,"DFT, Tran et al.",-24.4
